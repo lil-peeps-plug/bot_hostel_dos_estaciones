@@ -26,7 +26,7 @@ const openai = new OpenAI({ apiKey: config.openai.apiKey });
 let waClient = null;
 
 // Rules PDF — sent after a successful booking, and on /testrule.
-const RULES_PDF_PATH = path.join(__dirname, 'Rules.pdf');
+const RULES_PDF_PATH = path.join(__dirname, 'assets', 'Rules.pdf');
 const FALLBACK_RULES_CAPTION =
   '📄 Aquí tienes las normas del hostel. Por favor, léelas antes de tu llegada. ¡Gracias!\n\n' +
   '📄 Here are the hostel rules. Please read them before your arrival. Thank you!';

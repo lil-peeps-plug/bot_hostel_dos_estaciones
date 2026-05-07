@@ -40,8 +40,9 @@ module.exports = {
     language: 'es',
     hotelName: 'Hostel Dos Estaciones',
     // Public admin / front-desk phone. Given to guests for anything outside
-    // the FAQ scope. Display-only — formatting with spaces is fine.
-    adminPhone: '+34 634 019 118',
+    // the FAQ scope. Loaded from .env so it isn't committed to the repo.
+    // If unset, the bot falls back to redirecting guests by email.
+    adminPhone: process.env.ADMIN_PHONE_NUMBER || '',
     // Prepended to the bot's first reply in a new conversation.
     // Bilingual + formal: tells guest we can assist in any language.
     welcomeMessage:

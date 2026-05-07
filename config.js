@@ -39,6 +39,9 @@ module.exports = {
     // 'es' = Spanish, 'en' = English (primary language for the bot)
     language: 'es',
     hotelName: 'Hostel Dos Estaciones',
+    // Public admin / front-desk phone. Given to guests for anything outside
+    // the FAQ scope. Display-only — formatting with spaces is fine.
+    adminPhone: '+34 634 019 118',
     // Prepended to the bot's first reply in a new conversation.
     // Bilingual + formal: tells guest we can assist in any language.
     welcomeMessage:

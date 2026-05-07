@@ -149,6 +149,10 @@ async function processMessage(phone, userText) {
     session = createSession(phone);
   }
 
+  // Detect first turn BEFORE pushing the user message, so we can
+  // prepend the bilingual welcome to the very first reply.
+  const isFirstTurn = session.messages.length === 0;
+
   // Add user message to history
   session.messages.push({ role: 'user', content: userText });
   session.messageCount++;
@@ -195,26 +199,26 @@ async function processMessage(phone, userText) {
 
       session.stage = 'done';
 
+      let reply;
       if (result.success) {
-        return (
+        reply =
           `✅ ¡Perfecto, ${args.first_name}! Tu reserva está lista.\n\n` +
           `📅 ${args.check_in} → ${args.check_out}\n` +
           `💳 Completa el pago aquí:\n${result.paymentUrl}\n\n` +
-          `¡Nos vemos pronto en ${config.bot.hotelName}! 🏨`
-        );
+          `¡Nos vemos pronto en ${config.bot.hotelName}! 🏨`;
       } else {
         logger.error('Booking automation failed:', result.error);
-        return (
+        reply =
           '❌ Lo siento, hubo un problema al procesar tu reserva. ' +
-          'Por favor contáctanos directamente: hosteldosestaciones@gmail.com'
-        );
+          'Por favor contáctanos directamente: hosteldosestaciones@gmail.com';
       }
+      return isFirstTurn ? `${config.bot.welcomeMessage}\n\n${reply}` : reply;
     }
 
     // ── LLM returned a normal text response ───────────────
     const text = choice.message.content ?? '';
     session.messages.push({ role: 'assistant', content: text });
-    return text;
+    return isFirstTurn ? `${config.bot.welcomeMessage}\n\n${text}` : text;
 
   } catch (err) {
     logger.error('OpenAI error:', err.message);

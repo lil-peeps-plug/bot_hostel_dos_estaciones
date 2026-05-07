@@ -39,10 +39,19 @@ module.exports = {
     // 'es' = Spanish, 'en' = English (primary language for the bot)
     language: 'es',
     hotelName: 'Hostel Dos Estaciones',
-    // Sent when a new conversation starts
+    // Prepended to the bot's first reply in a new conversation.
+    // Bilingual + formal: tells guest we can assist in any language.
     welcomeMessage:
-      '¡Hola! Soy el asistente de reservas de Hostel Dos Estaciones (Alicante). ' +
-      '¿Para qué fechas te gustaría alojarte?',
+      '🇪🇸 Estimado/a huésped,\n\n' +
+      'Bienvenido/a a Hostel Dos Estaciones (Alicante). Soy su asistente ' +
+      'de reservas. Tengo el gusto de informarle que puedo atenderle en ' +
+      'cualquier idioma — siéntase libre de escribirme en español, inglés, ' +
+      'francés, alemán, italiano, portugués o el idioma que prefiera.\n\n' +
+      '🇬🇧 Dear guest,\n\n' +
+      "Welcome to Hostel Dos Estaciones (Alicante). I'm your booking " +
+      "assistant. I'm pleased to let you know that I can assist you in any " +
+      'language — feel free to write to me in English, Spanish, French, ' +
+      'German, Italian, Portuguese, or any language of your preference.',
     // Sent when session limit is hit
     limitMessage:
       'Hemos alcanzado el límite de mensajes. Para finalizar tu reserva, ' +

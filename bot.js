@@ -11,14 +11,79 @@
  *   - Per-session message limit + inactivity timeout prevent abuse.
  */
 
-const { Client, LocalAuth } = require('whatsapp-web.js');
+const { Client, LocalAuth, MessageMedia } = require('whatsapp-web.js');
 const qrcode  = require('qrcode-terminal');
 const OpenAI  = require('openai');
+const path    = require('path');
+const fs      = require('fs');
 const { bookRoom } = require('./booking');
 const config  = require('./config');
 const logger  = require('./utils/logger');
 
 const openai = new OpenAI({ apiKey: config.openai.apiKey });
+
+// Module-level WhatsApp client — assigned in startBot(); used by sendRulesPdf().
+let waClient = null;
+
+// Rules PDF — sent after a successful booking, and on /testrule.
+const RULES_PDF_PATH = path.join(__dirname, 'Rules.pdf');
+const FALLBACK_RULES_CAPTION =
+  '📄 Aquí tienes las normas del hostel. Por favor, léelas antes de tu llegada. ¡Gracias!\n\n' +
+  '📄 Here are the hostel rules. Please read them before your arrival. Thank you!';
+
+// Ask the LLM for a one-line caption in the same language the conversation has been using.
+// Falls back to the bilingual ES+EN string on any failure or empty session.
+async function generateRulesCaption(sessionMessages) {
+  if (!sessionMessages || sessionMessages.length === 0) {
+    return FALLBACK_RULES_CAPTION;
+  }
+  try {
+    const response = await openai.chat.completions.create({
+      model:      config.openai.model,
+      max_tokens: 120,
+      messages: [
+        {
+          role: 'system',
+          content:
+            'Output ONE short, polite sentence in the SAME language the user has been writing in this conversation. ' +
+            'The sentence should mean: "Attached are the hostel rules — please read them before your arrival. Thank you!" ' +
+            'Plain text only. No quotes, no markdown, no emoji, no preamble.',
+        },
+        ...sessionMessages.filter(m => m.role === 'user' || m.role === 'assistant'),
+        { role: 'user', content: 'Write the caption now.' },
+      ],
+    });
+    const text = response.choices[0]?.message?.content?.trim();
+    return text ? `📄 ${text}` : FALLBACK_RULES_CAPTION;
+  } catch (err) {
+    logger.warn('generateRulesCaption failed, using fallback:', err.message);
+    return FALLBACK_RULES_CAPTION;
+  }
+}
+
+async function sendRulesPdf(phone, sessionMessages) {
+  if (!waClient) {
+    logger.warn('sendRulesPdf called before WhatsApp client was ready');
+    return;
+  }
+  if (!fs.existsSync(RULES_PDF_PATH)) {
+    logger.warn('Rules.pdf not found at', RULES_PDF_PATH);
+    return;
+  }
+  const caption = await generateRulesCaption(sessionMessages);
+  const media   = MessageMedia.fromFilePath(RULES_PDF_PATH);
+  await waClient.sendMessage(phone, media, { caption });
+  logger.info(`Sent Rules.pdf → ${phone}`);
+}
+
+// /testrule is gated to ADMIN_PHONE_NUMBER if set in .env; otherwise allowed for anyone.
+function isAdmin(phone) {
+  const adminPhone = process.env.ADMIN_PHONE_NUMBER;
+  if (!adminPhone) return true;
+  const senderDigits = phone.replace(/\D/g, '');
+  const adminDigits  = adminPhone.replace(/\D/g, '');
+  return senderDigits === adminDigits;
+}
 
 // ── Session store ────────────────────────────────────────────────────────────
 // Key: WhatsApp JID (phone@c.us)
@@ -117,7 +182,22 @@ function todayDDMMYYYY() {
 }
 
 // ── Message processor ────────────────────────────────────────────────────────
+// Returns either:
+//   - a string                        → just reply with that text
+//   - { text, sendRulesAfter: true }  → reply with text, then send the Rules PDF
+//   - null                            → already handled (e.g. /testrule); skip reply
 async function processMessage(phone, userText) {
+  // ── /testrule — admin test command, sends the rules PDF straight away ──────
+  if (userText.trim().toLowerCase() === '/testrule') {
+    if (!isAdmin(phone)) {
+      logger.info(`/testrule rejected for ${phone} (not admin)`);
+      return null;
+    }
+    const existing = getSession(phone);
+    await sendRulesPdf(phone, existing?.messages ?? []);
+    return null;
+  }
+
   let session = getSession(phone);
 
   // Reset expired sessions
@@ -212,7 +292,9 @@ async function processMessage(phone, userText) {
           '❌ Lo siento, hubo un problema al procesar tu reserva. ' +
           'Por favor contáctanos directamente: hosteldosestaciones@gmail.com';
       }
-      return isFirstTurn ? `${config.bot.welcomeMessage}\n\n${reply}` : reply;
+      const text = isFirstTurn ? `${config.bot.welcomeMessage}\n\n${reply}` : reply;
+      // On success, signal the message handler to send Rules.pdf right after.
+      return result.success ? { text, sendRulesAfter: true } : text;
     }
 
     // ── LLM returned a normal text response ───────────────
@@ -239,6 +321,7 @@ function startBot() {
       ],
     },
   });
+  waClient = client;
 
   client.on('qr', (qr) => {
     console.log('\n📱 Escanea este código QR con WhatsApp (número del hostel):\n');
@@ -271,10 +354,19 @@ function startBot() {
 
     logger.info(`← ${phone}: ${text}`);
 
-    const reply = await processMessage(phone, text);
+    const result = await processMessage(phone, text);
+    if (result === null) return; // already handled (e.g. /testrule sent its own media)
 
-    await msg.reply(reply);
-    logger.info(`→ ${phone}: ${reply.slice(0, 80)}${reply.length > 80 ? '…' : ''}`);
+    const replyText      = typeof result === 'string' ? result : result.text;
+    const sendRulesAfter = typeof result === 'object' && result.sendRulesAfter;
+
+    await msg.reply(replyText);
+    logger.info(`→ ${phone}: ${replyText.slice(0, 80)}${replyText.length > 80 ? '…' : ''}`);
+
+    if (sendRulesAfter) {
+      const session = getSession(phone);
+      await sendRulesPdf(phone, session?.messages ?? []);
+    }
   });
 
   client.initialize();
